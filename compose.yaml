@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    environment:
+      BACKEND_URL: http://backend:8080
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
