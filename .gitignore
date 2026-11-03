@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+.next/
+
+# Local files
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Source documents and generated data
+/DATA/
+/processed_data/
+/TALKING POINTS.docx
