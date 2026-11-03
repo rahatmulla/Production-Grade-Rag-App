@@ -1,170 +1,227 @@
-# Enterprise Agentic RAG (Scalable Pipeline)
+# Enterprise Agentic RAG
 
-A production-grade, enterprise-level RAG system built with **LangGraph**, **Portkey LLM Gateway**, and **Gemini Embeddings**. The system distinguishes between technical "True Data" and random "Noisy Data" using semantic re-ranking, history-aware planning, and NeMo Guardrails for input/output safety.
+A document question-answering application for **Kubernetes, Intel hardware, and enterprise networking**, built with FastAPI, Streamlit, LangGraph, Qdrant, and a Portkey LLM gateway.
 
-## Key Features
+The application checks each question's topic before running the RAG workflow, retrieves and reranks document passages for technical questions, and displays the answer alongside retrieved context.
 
-- **Agentic Intelligence**: LangGraph for cyclic reasoning, multi-step planning, and conversation memory.
-- **Guardrails**: NeMo Guardrails gate blocks off-topic, jailbreak, and injection inputs before any retrieval.
-- **LLM Gateway**: Portkey routes all LLM calls with automatic fallback between primary and backup Groq keys.
-- **Enterprise Search**: Qdrant Cloud for high-performance vector search + FlashRank for local semantic reranking.
-- **Gemini Embeddings**: Google `gemini-embedding-2-preview` (3072-dim) via `langchain-google-genai`.
-- **Local Document Parsing**: PDF, HTML, TXT, DOCX, PPTX parsed entirely on-device — no external OCR service.
-- **Observability**: Full trace nesting with **Pydantic Logfire** and **LangSmith** across every agent node.
-- **Evaluation Suite**: RAGAS-powered eval pipeline (6 metrics) with a dedicated Streamlit demo app.
+## Features
 
----
+- **Topic filtering:** a Groq-powered scope classifier blocks unrelated or uncertain requests before retrieval.
+- **Workflow orchestration:** LangGraph routes requests through a planner, optional retrieval, and response generation.
+- **Conversation memory:** thread-based, in-process memory using LangGraph MemorySaver.
+- **LLM gateway:** planner and responder calls use Portkey; routing, caching, and fallback behavior depend on the configured Portkey configuration.
+- **Document retrieval:** Qdrant vector search with local FlashRank reranking.
+- **Embeddings:** Gemini embeddings, with a local sentence-transformers fallback.
+- **Document ingestion:** local parsers for PDF, HTML, TXT, DOCX, and PPTX.
+- **Observability:** Logfire instrumentation and configurable LangSmith tracing.
+- **API controls:** request validation and a 10-request-per-minute query limit per client IP.
+- **Docker Compose:** separate backend and frontend containers started with one command.
 
-## Agent Intelligence Flow
+## Request flow
 
 ```mermaid
-graph TD
-    User((User)) --> UI[Streamlit UI]
-    UI --> API[FastAPI /query]
-    API --> Guard{NeMo Guardrails}
-    Guard -->|Blocked| UI
-    Guard -->|Pass| Planner{Planner Node}
-    Planner -->|Conversational| Responder[Responder Node]
-    Planner -->|Technical| Retriever[Retriever Node]
-    Retriever --> Reranker[FlashRank Local Reranker]
-    Reranker --> Responder
-    Responder --> UI
-    Responder -.-> Memory[(LangGraph MemorySaver)]
+flowchart TD
+    UI["Streamlit frontend"] --> API["FastAPI /query"]
+    API --> Scope{"Scope check"}
+    Scope -->|Blocked| Refusal["Return refusal"]
+    Scope -->|Allowed| Planner{"Planner"}
+    Planner -->|Technical question| Retrieval["Qdrant retrieval and FlashRank reranking"]
+    Planner -->|Conversation| Response["Generate response"]
+    Retrieval --> Response
+    Response --> UI
 ```
 
----
+The scope classifier calls Groq directly. Planner and responder calls go through Portkey. NeMo Guardrails configuration is included, but the current API gate uses the separate scope classifier.
 
-## Project Structure
+## Technology
 
-```text
-├── app/
-│   ├── agents/
-│   │   └── nodes/       # Planner, Retriever, Responder LangGraph nodes
-│   ├── gateway/         # Portkey LLM gateway — primary + fallback Groq routing
-│   ├── guardrails/      # NeMo Guardrails input/output filtering
-│   ├── ingestion/
-│   │   ├── chunking/    # Paragraph-based text splitter (1500 char max)
-│   │   └── loaders/     # Local parsers — PDF (pypdf), HTML, TXT, DOCX, PPTX
-│   ├── services/
-│   │   └── retrieval/   # Gemini embeddings + Qdrant search + FlashRank reranking
-│   ├── config.py        # Centralized environment variable management
-│   └── main.py          # FastAPI entrypoint — guardrails gate + /query endpoint
-├── evals/               # RAGAS evaluation suite + Streamlit 3-tab demo
-├── ui/                  # Streamlit chat interface with reasoning step transparency
-├── processed_data/      # Auto-generated — parsed & chunked JSON output per document
-├── docs/                # Architectural and operational guides (11 docs)
-├── DATA/                # Sample datasets (True vs Noisy documentation)
-└── requirements.txt     # Pinned dependencies
-```
+| Component | Technology |
+|-----------|------------|
+| Frontend | Streamlit |
+| Backend | FastAPI, Pydantic |
+| Orchestration | LangGraph, LangChain |
+| Generation gateway | Portkey with Groq provider aliases |
+| Scope classifier | Groq via ChatGroq |
+| Vector database | Qdrant |
+| Reranking | FlashRank |
+| Embeddings | Gemini; local all-mpnet-base-v2 fallback |
+| Observability | Logfire, LangSmith |
+| Packaging | Docker, Docker Compose |
 
----
+## Repository layout
 
-## Tech Stack
+| Path | Purpose |
+|------|---------|
+| `app/agents/` | Graph, state, planner, retriever, and responder |
+| `app/gateway/` | Portkey clients and gateway configuration |
+| `app/guardrails/` | Scope check and NeMo configuration |
+| `app/ingestion/` | Document loaders, chunking, and indexing |
+| `app/services/retrieval/` | Embeddings, vector search, and reranking |
+| `app/main.py` | FastAPI endpoints and request validation |
+| `ui/app.py` | Streamlit chat interface |
+| `tests/` | Guardrail and query endpoint tests |
+| `Dockerfile` | Backend container |
+| `Dockerfile.ui` | Frontend container |
+| `compose.yaml` | Runs both containers |
+| `.dockerignore` | Excludes secrets and unnecessary build files |
 
-| Layer | Technology |
-|-------|-----------|
-| Orchestration | LangChain + LangGraph |
-| LLMs | Groq (Llama 3.3 70B) via **Portkey** gateway |
-| Guardrails | NeMo Guardrails |
-| Vector DB | Qdrant Cloud |
-| Reranking | FlashRank (local, zero-latency) |
-| Embeddings | Gemini `gemini-embedding-2-preview` (3072-dim) |
-| Document Parsing | pypdf + pdfplumber (local, no OCR service) |
-| Observability | Pydantic Logfire + LangSmith |
-| Evaluation | RAGAS + custom Tool Correctness (Jaccard) |
+Source documents in `DATA/` and generated files in `processed_data/` are excluded from Git. Supply your own documents before ingestion.
 
----
+## Configuration
 
-## Getting Started
-
-### 1. Install dependencies
-
-```powershell
-python -m venv tenvv
-.\tenvv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-Create a `.env` file with the following keys:
+Create a `.env` file in the project root:
 
 ```env
-# Groq Reasoning Engine (Llama 3.3)
-GROQ_API_KEY = ""
-GROQ_FALLBACK_API_KEY = ""          # second Groq key, or same as primary
+# Required backend services
+GROQ_API_KEY=
+PORTKEY_API_KEY=
+PORTKEY_CONFIG_SLUG=
+QDRANT_API_KEY=
+QDRANT_CLUSTER_ENDPOINT=
+GEMINI_API_KEY=
 
-# Portkey LLM Gateway
-PORTKEY_API_KEY = ""
+# Local Streamlit connection; Compose overrides this inside its frontend
+BACKEND_URL=http://127.0.0.1:8000
 
-# Qdrant Vector DB
-QDRANT_API_KEY = ""
-QDRANT_CLUSTER_ENDPOINT = ""        # e.g. https://your-cluster.cloud.qdrant.io:6333
-
-# Pydantic Logfire Observability
-LOGFIRE_TOKEN = ""
-
-# LangSmith
-LANGSMITH_TRACING = true
-LANGSMITH_ENDPOINT = https://api.smith.langchain.com
-LANGSMITH_API_KEY = ""
-LANGSMITH_PROJECT = ""
-
-# Streamlit UI → FastAPI
-BACKEND_URL = ""                    # e.g. http://localhost:8000
-
-# Eval judge LLM (keep separate from main key to avoid rate-limiting the live app)
-JUDGE_GROQ = ""
-
-# Gemini Embeddings
-GEMINI_API_KEY = ""
+# Observability
+LOGFIRE_TOKEN=
+LANGSMITH_TRACING=false
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=enterprise-rag
 ```
 
-### 3. Run data ingestion
+Configure the Portkey provider aliases used by the code: `rag` for the primary target and `rag2` if using the fallback target. Supply a valid `PORTKEY_CONFIG_SLUG`; the clients reference this remote configuration.
 
-Parses all documents in `DATA/`, chunks them, saves metadata to `processed_data/`, and indexes vectors into Qdrant.
+Never commit `.env` or API keys. External services require your own accounts and may have usage limits or charges.
+
+## Prepare the document index
+
+Ingestion is a separate step from starting the containers. If you already have a populated, compatible Qdrant collection, you can reuse it.
+
+For a new index, install the Python dependencies locally:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Place your documents in a `DATA` folder, then run:
+
+```powershell
+python -m app.ingestion.processor DATA
+```
+
+The processor parses documents, creates chunks, and indexes them in Qdrant. The configured collection name is `enterprise_rag`.
+
+Use `--wipe` only when you intend to delete and recreate the collection:
 
 ```powershell
 python -m app.ingestion.processor DATA --wipe
 ```
 
-> Pass `--wipe` to drop and recreate the Qdrant collection. Omit it to append to an existing collection.
+Use the same embedding model for indexing and querying. Gemini and the local fallback have different vector dimensions and cannot be used interchangeably against an existing index.
 
-### 4. Launch the app
+## Run with Docker Compose
 
-```powershell
-# Terminal 1 — FastAPI backend
-uvicorn app.main:app --reload --port 8000
+### Prerequisites
 
-# Terminal 2 — Streamlit UI
-streamlit run ui/app.py
-```
+- Docker Desktop running with Linux containers.
+- A configured `.env` file.
+- A populated Qdrant collection compatible with the active embedding model.
 
-### 5. Run the eval suite (optional)
+From the project root:
 
 ```powershell
-# Requires the FastAPI backend running on :8000
-streamlit run evals/app.py
+docker compose up --build
 ```
 
----
+The first build can take several minutes. Wait for the backend's `Application startup complete` message before submitting questions.
 
-## Documentation Index
+| Service | Address |
+|---------|---------|
+| Streamlit chatbot | http://localhost:8501 |
+| FastAPI interactive API docs | http://localhost:8080/docs |
+| Backend status | http://localhost:8080 |
 
-| # | Guide | What it covers |
-|---|-------|---------------|
-| 01 | [System Overview](docs/01_SYSTEM_OVERVIEW.md) | High-level vision and end-to-end flow |
-| 02 | [Ingestion Engine](docs/02_INGESTION_ENGINE.md) | Document parsing and indexing pipeline |
-| 03 | [Node Intelligence](docs/03_NODE_INTELLIGENCE.md) | Planner, Retriever, Responder internals |
-| 04 | [Observability](docs/04_TRACING_AND_OBSERVABILITY.md) | Logfire + LangSmith tracing |
-| 05 | [Environment Variables](docs/05_ENVIRONMENT_VARIABLES.md) | All env vars and configuration reference |
-| 06 | [Known Gotchas](docs/06_KNOWN_GOTCHAS.md) | Non-obvious bugs and architectural decisions |
-| 07 | [FlashRank Reranking](docs/07_FLASHRANK_RERANKING.md) | Local semantic reranker deep-dive |
-| 08 | [Guardrails](docs/08_GUARDRAILS.md) | NeMo Guardrails implementation |
-| 09 | [LLM Gateway](docs/09_LLM_GATEWAY.md) | Portkey routing, fallback, and observability |
-| 10 | [Evals](docs/10_EVALS.md) | RAGAS metrics theory and token budget |
-| 11 | [Evals Pipeline](docs/11_EVALS_PIPELINE.md) | Live eval pipeline and Streamlit demo |
+Streamlit connects to `http://backend:8080` inside the Docker network. Your browser uses the localhost addresses above.
 
----
+Docker Compose starts the application services locally. It does not publish a public website or provision the external APIs and Qdrant collection.
 
-*Built for High-Scale Enterprise Document Intelligence.*
+### Stop and restart
+
+Press Ctrl+C, then remove the containers and Compose network:
+
+```powershell
+docker compose down
+```
+
+Start again:
+
+```powershell
+docker compose up
+```
+
+After changing code or dependencies, rebuild with `docker compose up --build`.
+
+### Troubleshooting
+
+| Symptom | What to check |
+|---------|---------------|
+| Docker Linux engine pipe error | Open Docker Desktop and wait for the engine to start. |
+| Frontend reports backend offline | Check backend logs and wait for startup to complete. |
+| Port already in use | Stop the other process using port 8501 or 8080. |
+| Scope check unavailable or failed | Check Groq credentials, connectivity, and limits in backend logs. |
+| Retrieval fails | Check Qdrant connectivity, collection contents, and embedding compatibility. |
+| Generation fails | Check the Portkey key, configuration slug, provider aliases, and provider limits. |
+
+View service logs:
+
+```powershell
+docker compose logs backend
+docker compose logs frontend
+```
+
+## Run without Docker
+
+Install the dependencies and configure `.env` as described above.
+
+Start the backend in one terminal:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+Start the frontend in a second terminal:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m streamlit run ui/app.py
+```
+
+For this setup, use `BACKEND_URL=http://127.0.0.1:8000`.
+
+| Service | Address |
+|---------|---------|
+| Streamlit chatbot | http://localhost:8501 |
+| FastAPI interactive API docs | http://127.0.0.1:8000/docs |
+
+## Verify the application
+
+| Test | Expected behavior |
+|------|-------------------|
+| “How to make coffee?” | Refusal; retrieval skipped |
+| “What is Kubernetes?” | In-scope response |
+| A specific question covered by indexed documents | Relevant answer and retrieved context available for inspection |
+
+A successful response alone does not prove that the answer is supported by the documents. Inspect retrieved passages when assessing answer quality.
+
+## Current limitations
+
+- Conversation memory is held in the backend process and is lost on restart.
+- The scope check is model-based and can misclassify requests.
+- Retrieved context is displayed, but claim-by-claim citation verification is not implemented.
+- The current app is a portfolio prototype; production use would require additional authentication, persistent state, and deployment hardening.
+- Docker Compose uses startup ordering rather than a backend readiness health check.
