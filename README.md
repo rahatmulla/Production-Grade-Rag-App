@@ -218,6 +218,21 @@ For this setup, use `BACKEND_URL=http://127.0.0.1:8000`.
 
 A successful response alone does not prove that the answer is supported by the documents. Inspect retrieved passages when assessing answer quality.
 
+## Scope evaluation in GitHub Actions
+
+The [RAG evaluations workflow](.github/workflows/rag-evals.yml) runs on pull requests and pushes to `main`. You can also run it manually from the Actions tab. Add `GROQ_API_KEY` as a repository secret under **Settings → Secrets and variables → Actions**.
+
+The [pytest suite](tests/test_guardrails.py) sends nine questions to the live Groq scope classifier. It checks whether the classifier allows in-scope IT questions and blocks unrelated requests, mixed-topic requests, and attempts to override instructions. The job requires **100% scope accuracy (9/9)**. A wrong decision, a missing key in CI, or a provider error fails the check. This score measures the classifier's allow or block decisions before retrieval. Retrieval and generated answer quality require separate evaluations.
+
+To run the same check locally in PowerShell, install the project dependencies and set `GROQ_API_KEY` in your terminal environment before running pytest.
+
+```powershell
+python -m pip install -r requirements.txt pytest
+python -m pytest -q -s tests/test_guardrails.py
+```
+
+A passing run prints `Scope accuracy: 100.0% (9/9)`. In GitHub, find the score under **Actions → RAG evaluations → Scope evaluation → Run live scope evaluation**.
+
 ## Current limitations
 
 - Conversation memory is held in the backend process and is lost on restart.
