@@ -6,6 +6,14 @@ from app.agents.state import AgentState                         #imports shared 
 from app.gateway import portkey_client, extract_cache_status  # Imports the Portkey client and cache-status helper
 
 
+RESPONSE_STYLE = (
+    "Lead with the direct answer. Aim for 2–4 short sentences by default. "
+    "Use a brief numbered list for procedures. Expand when the user asks for "
+    "more detail or when essential steps or caveats require it. "
+    "Avoid generic introductions and repeated summaries."
+)
+
+
 def generate_node(state: AgentState):
     """
     Generates the final response using conversation history or retrieved documents.
@@ -32,6 +40,7 @@ def generate_node(state: AgentState):
         prompt = f"""
         You are a friendly and helpful Enterprise AI Assistant.
         Answer the user's latest message using the CONVERSATION HISTORY below.
+        {RESPONSE_STYLE}
 
         CONVERSATION HISTORY:
         {history_str}
@@ -60,6 +69,7 @@ def generate_node(state: AgentState):
         prompt = f"""
         You are a Senior Technical Architect.
         Answer the question using the TECHNICAL CONTEXT provided.
+        {RESPONSE_STYLE}
 
         TECHNICAL CONTEXT:
         {full_context}
